@@ -70,21 +70,29 @@
   function buildList(first, rest, index) {
     return [first].concat(extractList(rest, index));
   }
+
+  function n(node) {
+    node.pos = {
+      start: offset(),
+      end: peg$currPos
+    }
+    return node;
+  }
 }
 
 /* ---- Syntactic Grammar ----- */
 
 Grammar
   = __ initializer:(Initializer __)? rules:(Rule __)+ {
-      return {
+      return n({
         type:        "grammar",
         initializer: extractOptional(initializer, 0),
         rules:       extractList(rules, 0)
-      };
+      });
     }
 
 Initializer
-  = code:CodeBlock EOS { return { type: "initializer", code: code }; }
+  = code:CodeBlock EOS { return n({ type: "initializer", code: code }); }
 
 Rule
   = name:IdentifierName __
@@ -92,7 +100,7 @@ Rule
     "=" __
     expression:Expression EOS
     {
-      return {
+      return n({
         type:        "rule",
         name:        name,
         expression:  displayName !== null
@@ -102,7 +110,7 @@ Rule
               expression: expression
             }
           : expression
-      };
+      });
     }
 
 Expression
@@ -111,33 +119,33 @@ Expression
 ChoiceExpression
   = first:ActionExpression rest:(__ "/" __ ActionExpression)* {
       return rest.length > 0
-        ? { type: "choice", alternatives: buildList(first, rest, 3) }
+        ? n({ type: "choice", alternatives: buildList(first, rest, 3) })
         : first;
     }
 
 ActionExpression
   = expression:SequenceExpression code:(__ CodeBlock)? {
       return code !== null
-        ? { type: "action", expression: expression, code: code[1] }
+        ? n({ type: "action", expression: expression, code: code[1] })
         : expression;
     }
 
 SequenceExpression
   = first:LabeledExpression rest:(__ LabeledExpression)* {
       return rest.length > 0
-        ? { type: "sequence", elements: buildList(first, rest, 1) }
+        ? n({ type: "sequence", elements: buildList(first, rest, 1) })
         : first;
     }
 
 LabeledExpression
   = label:Identifier __ ":" __ expression:PrefixedExpression {
-      return { type: "labeled", label: label, expression: expression };
+      return n({ type: "labeled", label: label, expression: expression });
     }
   / PrefixedExpression
 
 PrefixedExpression
   = operator:PrefixedOperator __ expression:SuffixedExpression {
-      return { type: OPS_TO_PREFIXED_TYPES[operator], expression: expression };
+      return n({ type: OPS_TO_PREFIXED_TYPES[operator], expression: expression });
     }
   / SuffixedExpression
 
@@ -148,7 +156,7 @@ PrefixedOperator
 
 SuffixedExpression
   = expression:PrimaryExpression __ operator:SuffixedOperator {
-      return { type: OPS_TO_SUFFIXED_TYPES[operator], expression: expression };
+      return n({ type: OPS_TO_SUFFIXED_TYPES[operator], expression: expression });
     }
   / PrimaryExpression
 
@@ -167,12 +175,12 @@ PrimaryExpression
 
 RuleReferenceExpression
   = name:IdentifierName !(__ (StringLiteral __)? "=") {
-      return { type: "rule_ref", name: name };
+      return n({ type: "rule_ref", name: name });
     }
 
 SemanticPredicateExpression
   = operator:SemanticPredicateOperator __ code:CodeBlock {
-      return { type: OPS_TO_SEMANTIC_PREDICATE_TYPES[operator], code: code };
+      return n({ type: OPS_TO_SEMANTIC_PREDICATE_TYPES[operator], code: code });
     }
 
 SemanticPredicateOperator
@@ -306,7 +314,7 @@ BooleanLiteral
 
 LiteralMatcher "literal"
   = value:StringLiteral ignoreCase:"i"? {
-      return { type: "literal", value: value, ignoreCase: ignoreCase !== null };
+      return n({ type: "literal", value: value, ignoreCase: ignoreCase !== null });
     }
 
 StringLiteral "string"
@@ -330,13 +338,13 @@ CharacterClassMatcher "character class"
     "]"
     ignoreCase:"i"?
     {
-      return {
+      return n({
         type:       "class",
         parts:      filterEmptyStrings(parts),
         inverted:   inverted !== null,
         ignoreCase: ignoreCase !== null,
         rawText:    text()
-      };
+      });
     }
 
 ClassCharacterRange
@@ -405,7 +413,7 @@ HexDigit
   = [0-9a-f]i
 
 AnyMatcher
-  = "." { return { type: "any" }; }
+  = "." { return n({ type: "any" }); }
 
 CodeBlock "code block"
   = "{" code:Code "}" { return code; }
