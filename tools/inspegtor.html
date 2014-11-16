@@ -1,0 +1,220 @@
+<!doctype html>
+<html>
+	<head>
+		<title>inspegtor is a parsing expression grammar explorer</title>
+		<link href='http://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic,700italic&subset=latin,cyrillic-ext,cyrillic,greek-ext,greek,latin-ext' rel='stylesheet' type='text/css'>
+		<style>
+			html {
+				height: 100%;
+
+				font-size: 12pt;
+				font-family: 'Ubuntu Mono', 'Inconsolata', 'Source Code Pro', 'Menlo';	
+			}
+			body {
+				display: flex;
+				flex-direction: row;
+				align-items: stretch;
+				padding: 0;
+				margin: 0;
+				height: 100%;
+
+				background: black;
+				color: white;
+			}
+
+			code {
+				white-space: pre;
+				font-size: 12pt;
+				font-family: 'Ubuntu Mono', 'Inconsolata', 'Source Code Pro', 'Menlo';
+
+				background: none;
+				color: white;
+				border: none;
+				flex-grow: 1;
+			}
+
+			#traceContainer {
+				flex-grow: 1;
+				max-height: 100%;
+				overflow: scroll;
+			}
+
+			tr.state_EXIT.success_true {
+				color: green;
+			}
+			tr.state_EXIT.success_false {
+				color: red;
+			}
+
+			code > b {
+				background: fuchsia;
+			}
+
+			#text > i {
+				background: #07f;
+			}
+		</style>		
+		<script src="../browser/peg-0.8.0.js"></script>
+		<script src="codemirror-compressed.js"></script>
+		<script src="parser-ast-iterator.js"></script>
+	</head>
+	<body>
+	<code id="parser">
+/*
+ * Simple Arithmetics Grammar
+ * ==========================
+ *
+ * Accepts expressions like "2 * (3 + 4)" and computes their value.
+ */
+
+{
+  function combine(first, rest, combiners) {
+    var result = first, i;
+    console.log('combine', first, rest);
+
+    for (i = 0; i < rest.length; i++) {
+      result = combiners[rest[i][1]](result, rest[i][3]);
+    }
+
+    return result;
+  }
+}
+
+Expression
+  = first:Term rest:(_ ("+" / "-") _ Term)* {
+      return combine(first, rest, {
+        "+": function(left, right) { return left + right; },
+        "-": function(left, right) { return left - right; }
+      });
+    }
+
+Term
+  = first:Factor rest:(_ ("*" / "/") _ Factor)* {
+      return combine(first, rest, {
+        "*": function(left, right) { return left * right; },
+        "/": function(left, right) { return left / right; }
+      });
+    }
+
+Factor
+  = "(" _ expr:Expression _ ")" { return expr; }
+  / Integer
+
+Integer "integer"
+  = [0-9]+ { return parseInt(text(), 10); }
+  
+_ "whitespace"
+  = [ \t\n\r]*
+	</code>
+	<code id="text">(2+2)*3</code>
+	<div id="traceContainer">
+		<table id="backtrace">
+		</table>
+	</div>
+	<script>
+	iterator = Parser(parser.textContent)(text.textContent);
+	iterVal = null;
+	state = 'stepping';
+	function step() {
+		iterVal = iterator.next();
+		backtrace.appendChild(fmtFrame(iterVal.value));
+		highlight(iterVal.value, iterVal.value.startPos, iterVal.value.pos);
+		traceContainer.scrollTop = traceContainer.scrollHeight;
+		if (iterVal.done) {
+			state = 'done';
+		}
+	}
+
+	function reset() {
+		highlight();
+		backtrace.innerHTML = '';
+		iterator = Parser(parser.textContent)(text.textContent);		
+		state = 'stepping';
+	}
+
+	function frame() {
+		if (state == 'running') {
+			for (var i = 0; i < 10 && state == 'running'; ++i) {
+				step();
+			}
+			requestAnimationFrame(frame);
+		}
+	}
+
+	window.addEventListener('keydown', function(e) {
+		if (e.target == document.body) {
+			if (e.which == 13 /* ENTER */) {
+				if (e.ctrlKey) {
+					reset();
+					state = 'running';
+					frame();
+				} else if (state != 'done') {
+					if (state == 'stepping') {
+						state = 'running';
+						frame();
+					} else if (state == 'running') {
+						state = 'stepping';
+					}
+				}
+			} else if (e.which == 32 /* Space */) {
+				if (e.ctrlKey) {
+					reset();
+					state = 'stepping';
+					step();
+				} else if (state != 'done') {
+					if (state == 'running') {
+						state = 'stepping';							
+					} else {
+						step();
+					}
+				}
+			}
+		}
+	});
+
+	function highlight(frame, txtStart, txtEnd) {
+		grammar = parser.textContent;
+		if (frame && frame.ptr.pos) {
+			parser.innerHTML = grammar.substring(0, frame.ptr.pos.start) + 
+				'<b>' + grammar.substring(frame.ptr.pos.start, frame.ptr.pos.end) + '</b>' +
+				grammar.substring(frame.ptr.pos.end, grammar.length);
+		} else {
+			parser.textContent = grammar;
+		}
+		txt = text.textContent;
+		if (txtStart != undefined) {
+			text.innerHTML = '<i>' + txt.substring(0, txtStart) + '</i>' + 
+				'<b>' + txt.substring(txtStart, txtEnd) + '</b>' +
+				txt.substring(txtEnd, txt.length);
+		} else {
+			text.textContent = txt;
+		}
+	}
+
+	function fmtFrame(frame) {
+		var tr = document.createElement('tr');
+		tr.setAttribute('class', 'state_' + frame.state._ + ' success_' + frame.success);
+		var type = document.createElement('td');
+		type.textContent = frame.ptr.type;
+		tr.appendChild(type);
+		var state = document.createElement('td');
+		state.textContent = frame.state._;
+		tr.appendChild(state);
+		var start = document.createElement('td');
+		start.textContent = frame.startPos;
+		tr.appendChild(start);
+		var end = document.createElement('td');
+		end.textContent = frame.pos;
+		tr.appendChild(end);
+		var results = document.createElement('td');
+		if (frame.state._ == 'EXIT') {
+			results.innerHTML += JSON.stringify(frame.result);
+		}
+		tr.appendChild(results);
+		tr.addEventListener('mousemove', highlight.bind(null,
+			frame, frame.startPos, frame.pos));
+		return tr;
+	}
+	</script>	
+	</body>
+</html>
