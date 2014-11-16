@@ -107,6 +107,17 @@ function Parser(grammar, startRule) {
 		this.stack = [];
 	};
 
+	function flatStr(ary) {
+		if (!Array.isArray(ary)) {
+			if (ary == undefined) {
+				return '';
+			} else {
+				return '' + ary;
+			}
+		}
+		return ary.map(function(e) { return flatStr(e); }).join('');
+	}
+
 	ParseIterator.prototype = {
 		START: { '_': 'START',
 			grammar: function START_grammar() {
@@ -165,6 +176,30 @@ function Parser(grammar, startRule) {
 					}
 				}
 				return this.exit(false);
+			},
+
+			one_or_more: function ENTER_one_or_more() {
+				this.frame.state = this.EVAL;
+				this.frame.min_matches = 1;
+				return this.enter(this.frame.ptr.expression);
+			},
+
+			optional: function ENTER_optional() {
+				this.frame.state = this.EVAL;
+				this.frame.max_matches = 1;
+				return this.enter(this.frame.ptr.expression);				
+			},
+
+			_semantic: function ENTER_semantic() {
+				this.frame.state = this.EVAL;
+				var seqFrame = this.stack[this.stack.length - 1];
+				var val = this.frame.ptr.func.apply(this, [this, seqFrame]);
+				console.log(val);
+				if (this.frame.ptr.type == 'semantic_and') {
+					return this.exit(val, val);
+				} else {
+					return this.exit(!val, val);
+				}
 			}
 		},
 
@@ -186,22 +221,15 @@ function Parser(grammar, startRule) {
 				return this.exit(this.frame._.success, this.frame._.result);
 			},
 
-			zero_or_more: function EVAL_zero_or_more() {
-				if (!this.frame._.success) {
-					return this.exit(true,
-						this.frame.$_.map(function(frame) {
-							return frame.result;
-						}).filter(function(result) {
-							return result;
-						}));
-				}
-				this.frame.pos = this.frame._.pos;
-				return this.enter(this.frame.ptr.expression);
-			},
-
-			one_or_more: function EVAL_one_or_more() {
-				if (!this.frame._.success) {
-					if (this.frame.$_.length > 1) {
+			_loop: function EVAL_loop() {
+				if (!this.frame._.success ||
+					(this.frame.max_matches != undefined &&
+					 this.frame.$_.length == this.frame.max_matches)) {
+					if (this.frame.min_matches == undefined ||
+						this.frame.$_.length > this.frame.min_matches) {
+						if (this.frame._.success) {
+							this.frame.pos = this.frame._.pos;
+						}
 						return this.exit(true,
 							this.frame.$_.map(function(frame) {
 								return frame.result;
@@ -242,6 +270,15 @@ function Parser(grammar, startRule) {
 					return this.enter(this.frame.ptr.alternatives[this.frame.alternative]);
 				}
 				return this.exit(false);
+			},
+
+			text: function EVAL_text() {
+				this.frame.result = this.frame._.result;
+				if (this.frame._.success) {
+					this.frame.pos = this.frame._.pos;
+				}
+				return this.exit(this.frame._.success,
+					flatStr(this.frame._.result));
 			}
 		},
 
@@ -292,15 +329,25 @@ function Parser(grammar, startRule) {
 	ParseIterator.prototype.ENTER.named =
 	ParseIterator.prototype.ENTER.action =
 	ParseIterator.prototype.ENTER.labeled =
-	ParseIterator.prototype.ENTER.one_or_more =
 	ParseIterator.prototype.ENTER.zero_or_more =
+	ParseIterator.prototype.ENTER.text =
 		ParseIterator.prototype.ENTER.expression;
+
+	ParseIterator.prototype.ENTER.semantic_and =
+	ParseIterator.prototype.ENTER.semantic_not =
+		ParseIterator.prototype.ENTER._semantic;
 
 	ParseIterator.prototype.EVAL.rule =
 	ParseIterator.prototype.EVAL.rule_ref =
 	ParseIterator.prototype.EVAL.named =
 	ParseIterator.prototype.EVAL.labeled =
 		ParseIterator.prototype.EVAL.expression;
+
+	ParseIterator.prototype.EVAL.zero_or_more =
+	ParseIterator.prototype.EVAL.one_or_more =
+	ParseIterator.prototype.EVAL.optional =
+		ParseIterator.prototype.EVAL._loop;
+
 
 
 	return function(text) {

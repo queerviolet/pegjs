@@ -3,13 +3,32 @@
 	<head>
 		<title>inspegtor is a parsing expression grammar explorer</title>
 		<link href='http://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic,700italic&subset=latin,cyrillic-ext,cyrillic,greek-ext,greek,latin-ext' rel='stylesheet' type='text/css'>
+		<link rel="stylesheet" href="CodeMirror/lib/codemirror.css">
+		<link rel="stylesheet" href="CodeMirror/theme/solarized.css">		
+		<link rel="stylesheet" href="CodeMirror/theme/twilight.css">		
+		<link rel="stylesheet" href="CodeMirror/theme/midnight.css">
+				
+		<script src="../browser/peg-0.8.0.js"></script>
+		<script src="CodeMirror/lib/codemirror.js"></script>
+		<script src="CodeMirror/mode/javascript/javascript.js"></script>
+		<script src="CodeMirror/mode/pegjs/pegjs.js"></script>
+
+		<script src="parser-ast-iterator.js"></script>
+		<script src="inspegtor.js"></script>
 		<style>
 			html {
 				height: 100%;
 
 				font-size: 12pt;
-				font-family: 'Ubuntu Mono', 'Inconsolata', 'Source Code Pro', 'Menlo';	
+				font-family: 'Ubuntu Mono', 'Inconsolata', 'Source Code Pro', 'Menlo';
 			}
+
+			.CodeMirror {
+				font-size: 12pt;
+				font-family: 'Ubuntu Mono', 'Inconsolata', 'Source Code Pro', 'Menlo';
+				background: none;
+			}
+
 			body {
 				display: flex;
 				flex-direction: row;
@@ -22,21 +41,25 @@
 				color: white;
 			}
 
-			code {
+			textarea {
 				white-space: pre;
 				font-size: 12pt;
 				font-family: 'Ubuntu Mono', 'Inconsolata', 'Source Code Pro', 'Menlo';
 
 				background: none;
 				color: white;
-				border: none;
-				flex-grow: 1;
+				height: 100%;
 			}
 
-			#traceContainer {
+			.col {
 				flex-grow: 1;
 				max-height: 100%;
 				overflow: scroll;
+				width: 40%;
+			}
+
+			#traceContainer {
+				width: 20%;
 			}
 
 			tr.state_EXIT.success_true {
@@ -46,20 +69,26 @@
 				color: red;
 			}
 
-			code > b {
+			textarea > b {
 				background: fuchsia;
 			}
 
 			#text > i {
 				background: #07f;
 			}
+
+			.active {
+				background: fuchsia;
+			}
+
+			.matched {
+				background: #07f;
+			}
 		</style>		
-		<script src="../browser/peg-0.8.0.js"></script>
-		<script src="codemirror-compressed.js"></script>
-		<script src="parser-ast-iterator.js"></script>
 	</head>
 	<body>
-	<code id="parser">
+	<div class="col" style="flex-grow: 2">
+	<textarea id="parser">
 /*
  * Simple Arithmetics Grammar
  * ==========================
@@ -105,116 +134,14 @@ Integer "integer"
   
 _ "whitespace"
   = [ \t\n\r]*
-	</code>
-	<code id="text">(2+2)*3</code>
-	<div id="traceContainer">
+	</textarea>
+	</div>
+	<div class="col" id="traceContainer">
 		<table id="backtrace">
 		</table>
+	</div>	
+	<div class="col" style="flex-grow: 2">
+		<textarea id="text">(2+2)*3</textarea>
 	</div>
-	<script>
-	iterator = Parser(parser.textContent)(text.textContent);
-	iterVal = null;
-	state = 'stepping';
-	function step() {
-		iterVal = iterator.next();
-		backtrace.appendChild(fmtFrame(iterVal.value));
-		highlight(iterVal.value, iterVal.value.startPos, iterVal.value.pos);
-		traceContainer.scrollTop = traceContainer.scrollHeight;
-		if (iterVal.done) {
-			state = 'done';
-		}
-	}
-
-	function reset() {
-		highlight();
-		backtrace.innerHTML = '';
-		iterator = Parser(parser.textContent)(text.textContent);		
-		state = 'stepping';
-	}
-
-	function frame() {
-		if (state == 'running') {
-			for (var i = 0; i < 10 && state == 'running'; ++i) {
-				step();
-			}
-			requestAnimationFrame(frame);
-		}
-	}
-
-	window.addEventListener('keydown', function(e) {
-		if (e.target == document.body) {
-			if (e.which == 13 /* ENTER */) {
-				if (e.ctrlKey) {
-					reset();
-					state = 'running';
-					frame();
-				} else if (state != 'done') {
-					if (state == 'stepping') {
-						state = 'running';
-						frame();
-					} else if (state == 'running') {
-						state = 'stepping';
-					}
-				}
-			} else if (e.which == 32 /* Space */) {
-				if (e.ctrlKey) {
-					reset();
-					state = 'stepping';
-					step();
-				} else if (state != 'done') {
-					if (state == 'running') {
-						state = 'stepping';							
-					} else {
-						step();
-					}
-				}
-			}
-		}
-	});
-
-	function highlight(frame, txtStart, txtEnd) {
-		grammar = parser.textContent;
-		if (frame && frame.ptr.pos) {
-			parser.innerHTML = grammar.substring(0, frame.ptr.pos.start) + 
-				'<b>' + grammar.substring(frame.ptr.pos.start, frame.ptr.pos.end) + '</b>' +
-				grammar.substring(frame.ptr.pos.end, grammar.length);
-		} else {
-			parser.textContent = grammar;
-		}
-		txt = text.textContent;
-		if (txtStart != undefined) {
-			text.innerHTML = '<i>' + txt.substring(0, txtStart) + '</i>' + 
-				'<b>' + txt.substring(txtStart, txtEnd) + '</b>' +
-				txt.substring(txtEnd, txt.length);
-		} else {
-			text.textContent = txt;
-		}
-	}
-
-	function fmtFrame(frame) {
-		var tr = document.createElement('tr');
-		tr.setAttribute('class', 'state_' + frame.state._ + ' success_' + frame.success);
-		var type = document.createElement('td');
-		type.textContent = frame.ptr.type;
-		tr.appendChild(type);
-		var state = document.createElement('td');
-		state.textContent = frame.state._;
-		tr.appendChild(state);
-		var start = document.createElement('td');
-		start.textContent = frame.startPos;
-		tr.appendChild(start);
-		var end = document.createElement('td');
-		end.textContent = frame.pos;
-		tr.appendChild(end);
-		var results = document.createElement('td');
-		if (frame.state._ == 'EXIT') {
-			results.innerHTML += JSON.stringify(frame.result);
-		}
-		tr.appendChild(results);
-		tr.addEventListener('mousemove', highlight.bind(null,
-			frame, frame.startPos, frame.pos));
-		return tr;
-	}
-	</script>	
 	</body>
 </html>
