@@ -132,8 +132,13 @@ LineTerminatorSequence "end of line"
   / "\u2029"
 
 Comment "comment"
-  = MultiLineComment
-  / SingleLineComment
+  = txt:$MultiLineComment
+  / txt:$SingleLineComment {
+    return {
+      type: "Comment",
+      comment: txt
+    }
+  }
 
 MultiLineComment
   = "/*" (!"*/" SourceCharacter)* "*/"
@@ -1002,21 +1007,24 @@ Statement
   / DebuggerStatement
 
 Block
-  = "{" __ body:(StatementList __)? "}" {
+  = "{" c0:__ body:(StatementList c1:__)? "}" {
       return {
         type: "BlockStatement",
+        cIntro: c0,
+        cConcl: c1,
         body: optionalList(extractOptional(body, 0))
       };
     }
 
 StatementList
-  = first:Statement rest:(__ Statement)* { return buildList(first, rest, 1); }
+  = first:Statement rest:(__ Statement)* { return [first].concat(rest); }
 
 VariableStatement
-  = VarToken __ declarations:VariableDeclarationList EOS {
+  = VarToken c:__ declarations:VariableDeclarationList EOS {
       return {
         type:         "VariableDeclaration",
-        declarations: declarations
+        declarations: declarations,
+        c: c
       };
     }
 
@@ -1341,7 +1349,7 @@ Program
     }
 
 SourceElements
-  = first:SourceElement rest:(__ SourceElement)* {
+  = first:SourceElement rest:(c:__ SourceElement)* {
       return buildList(first, rest, 1);
     }
 

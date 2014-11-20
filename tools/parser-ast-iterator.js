@@ -33,9 +33,7 @@ function Parser(grammar, startRule) {
 				' = function ' + name + '(' + paramNames.join(', ') + ') {');
 			jsParts.push(body);
 			jsParts.push('}');
-			console.log('making', name, paramNames, body);
 			return function(iter, seqFrame) {
-				console.log('trampoline', name, iter.exports[name], seqFrame.$results);
 				return iter.exports[name].apply(iter, seqFrame.$results);
 			};
 		}
@@ -76,9 +74,7 @@ function Parser(grammar, startRule) {
 					} else {
 						seqLabels = [];
 					}
-					console.log(node.func);
 					node.func = makeFunc(prefix, id++, seqLabels, node.code);
-					console.log(node.func);
 					break;
 
 				case 'semantic_and':
@@ -194,7 +190,6 @@ function Parser(grammar, startRule) {
 				this.frame.state = this.EVAL;
 				var seqFrame = this.stack[this.stack.length - 1];
 				var val = this.frame.ptr.func.apply(this, [this, seqFrame]);
-				console.log(val);
 				if (this.frame.ptr.type == 'semantic_and') {
 					return this.exit(val, val);
 				} else {
@@ -354,3 +349,84 @@ function Parser(grammar, startRule) {
 		return new ParseIterator(text);
 	};
 }
+
+function generate(node) {
+	console.log(node.type);
+	return generate[node.type](node);
+};
+
+// Returns true or false
+// Sets pos.
+var vCount = 0;
+generate.expression = function(n) {
+	return '(' + generate(n.expression) + ')';
+};
+generate.rule = function(n) {
+	return 'function ' + n.name + '() { return ' + generate(n.expression) + '; }\n';
+};
+generate.rule_ref = function(n) {
+	return n.name + '()';
+};
+generate.named = generate.rule;
+generate.text = generate.expression;
+generate.action = function(n) {
+	return '(' + generate(n.expression) + '?' +
+		'((function(){' + n.code + '})(), true) : false)';
+};
+
+generate.labeled = generate.expression;
+generate.zero_or_more = function(n) {
+	return '(function() { var start=pos; var last=pos; while(' +
+		generate(n.expression) +
+		') {last=pos;} pos=last; return true; })()';
+}
+
+generate.one_or_more = function(n) {
+	return '(' + generate(n.expression) + ' && ' +
+		generate.zero_or_more(n.expression) + ')';
+};
+
+generate.optional = function(n) {
+	return '(' + generate(n.expression) + ', true)';
+};
+
+generate.choice = function(n) {
+	var v = 'v$' + vCount++;
+	var rst = '((pos = ' + v + ') !== false)';
+	var alts = [];
+	for (var i = 0; i != n.alternatives.length; ++i) {
+		alts.push('(' + rst + generate(n.alternatives[i]) + ')');
+	}
+	return '(' + v + ' = pos, (' +
+		n.alternatives.map(function(a) {
+			return '(' + rst + ' && ' + generate(a) + ') ||'
+		}).join('\n') +
+		'((pos = ' + v + ') === null)' + '))';
+};
+
+generate.literal = function(n) {
+	var ary = n.value.split('');
+	return '(' + ary.map(function(c, i) {
+		return 'input[pos + ' + i + ']=="' + c + '" &&'
+	}).join('') + ' (pos += ' + ary.length + ') !== false)';
+};
+
+generate['class'] = function(n) {
+	return '((' + n.parts.map(function(c) {
+		if (Array.isArray(c)) {
+			return '(input[pos] >= "' + c[0] + '" && ' +
+				'input[pos] <= "' + c[1] + '")';
+		}
+		return 'input[pos] == "' + c + '"';
+	}).join('||') + ') && (++pos !== false))';
+};
+
+generate.sequence = function(n) {
+	return '(' + n.elements.map(generate).join(' && ') + ')';
+};
+
+//	text: null,
+//	semantic_and: null,
+//	semantic_not: null,
+// simple_and
+// simple_not

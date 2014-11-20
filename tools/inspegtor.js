@@ -1,7 +1,6 @@
 var grammarCm = null;
 var textCm = null;
 var iterator = null;
-var iterVal = null;
 var state = 'stepping';
 
 function main() {
@@ -19,13 +18,22 @@ function main() {
 
 window.addEventListener('load', main);
 
-function step() {
-	iterVal = iterator.next();
-	backtrace.appendChild(fmtFrame(iterVal.value));
-	highlight(iterVal.value, iterVal.value.startPos, iterVal.value.pos);
-	traceContainer.scrollTop = traceContainer.scrollHeight;
-	if (iterVal.done) {
-		state = 'done';
+function step(count) {
+	count = count || 1;
+	frames = [];
+	for (var it = iterator.next(), i = 0; it.done == false && i < count;
+		it = iterator.next(), ++i) {
+		frames.push(it.value);
+		if (it.done) {
+			state = 'done';
+			break;
+		}
+	}
+	for (var i = 0; i < frames.length; ++i) {
+		var frame = frames[i];
+		backtrace.appendChild(fmtFrame(frame));
+		highlight(frame, frame.startPos, frame.pos);
+		traceContainer.scrollTop = traceContainer.scrollHeight;
 	}
 }
 
@@ -38,9 +46,7 @@ function reset() {
 
 function frame() {
 	if (state == 'running') {
-		for (var i = 0; i < 10 && state == 'running'; ++i) {
-			step();
-		}
+		step(10);
 		requestAnimationFrame(frame);
 	}
 }
